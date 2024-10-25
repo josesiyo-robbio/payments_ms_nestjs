@@ -6,6 +6,6 @@ import { NatsModule } from 'src/transports/nats.module';
 @Module({
   controllers: [PaymentsController],
   providers: [PaymentsService],
-  imports : [NatsModule]
+  imports: [NatsModule],
 })
 export class PaymentsModule {}
