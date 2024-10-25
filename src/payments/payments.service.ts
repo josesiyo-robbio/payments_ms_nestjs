@@ -1,12 +1,18 @@
-import { Injectable } from '@nestjs/common';
-import { envs } from 'src/config';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { envs, NATS_SERVICE } from 'src/config';
 import Stripe from 'stripe';
 import { PaymentSessionDto } from './dto/payment-session.dto';
 import { Request, Response } from 'express';
+import { ClientProxy } from '@nestjs/microservices';
 
 @Injectable()
 export class PaymentsService {
     private readonly stripe = new Stripe(envs.stripeSecret);
+    private readonly logger = new Logger('Payments Service Logger');
+
+    constructor(
+        @Inject(NATS_SERVICE) private readonly client : ClientProxy
+    ){}
 
     async createPaymentSession(paymentSessionDto: PaymentSessionDto) {
         const { currency, items, orderId } = paymentSessionDto;
@@ -37,7 +43,12 @@ export class PaymentsService {
             cancel_url: envs.stripeCancelUrl,
         });
 
-        return session;
+        //return session;
+        return {
+            cancelUrl : session.cancel_url,
+            successUrl : session.success_url,
+            url : session.url,
+        }
     }
 
     async stripeWebhook(req: Request, res: Response) {
@@ -62,11 +73,20 @@ export class PaymentsService {
         switch (event.type) {
             case 'charge.succeeded':
                 const chargeSucceeded = event.data.object;
-                // TODO: llamar nuestro microservicio
-                console.log({
-                    metadata: chargeSucceeded.metadata,
-                    orderId: chargeSucceeded.metadata.orderId,
-                });
+
+                const payload = {
+                    stripePaymentId :  chargeSucceeded.id,
+                    orderId : chargeSucceeded.metadata.orderId,
+                    receiptUrl : chargeSucceeded.receipt_url,
+                }
+
+                // this.logger.log({payload});
+                this.client.emit('payment.succeded',payload);
+
+                // console.log({
+                //     metadata: chargeSucceeded.metadata,
+                //     orderId: chargeSucceeded.metadata.orderId,
+                // });
                 break;
 
             default:
